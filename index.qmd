@@ -1,6 +1,17 @@
 ---
-title: "YERE Quarterly Infographic Brief"
+title: Youth Emergency Room Enhancement (YERE)
+subtitle: Quarterly Brief
+date: today
+ 
+format:
+  html:
+    title-block-banner: "#4472C4"
+    title-block-banner-color: white
+
+metadata-files: 
+  - _quarto.yml
 ---
+
 
 ```{r}
 #| label: load-yere-data
@@ -13,8 +24,8 @@ if (
   )
 ) {
   params <- list(
-    start_date = "2026-01-01",
-    end_date = "2026-03-31",
+    start_date = "2026-07-01",
+    end_date = "2026-09-30",
     fiscal_system = "state"
   )
 }
@@ -34,9 +45,169 @@ source(
 # Run the function to load YERE data
 yere_data <- load_yere_data()
 
+yere_full_data <- yere_data$yere_data$yere_full_data
+```
+
+
+```{r}
+#| label: search-data
+#| eval: false
+#| include: false
+
+# This code allows you to query for specific columns with a wildcard search.
+# The output includes the column # as well as the main data frame the column came from.
+
+full_source_init <- data.frame(df = c('yere_data$yere_data$transform$pathclient$joined_pathclient',
+                  'yere_data$yere_data$transform$referral_flow$scd$payor_one',
+                  'yere_data$yere_data$transform$referral_flow$scd$housing_one',
+                  # 'yere_data$yere_data$transform$referral_flow$scd$client_needs_one',
+                  # 'yere_data$yere_data$transform$referral_flow$scd$caregiver_needs_one',
+                  # 'yere_data$yere_data$transform$referral_flow$scd$client_family_needs_one',
+                  'yere_data$yere_data$transform$referral_flow$scd$needs_unified_one',
+                  'yere_data$yere_data$transform$referral_flow$transform$ref',
+                  'yere_data$yere_data$transform$referral_flow$transform$ia',
+                  'yere_data$yere_data$transform$referral_flow$transform$hosp_visit',
+                  'yere_data$yere_data$transform$referral_flow$transform$thirtyd',
+                  'yere_data$yere_data$transform$referral_flow$transform$threem',
+                  'yere_data$yere_data$transform$referral_flow$transform$sixm',
+                  'yere_data$yere_data$transform$referral_flow$transform$bhs'
+                  ),
+           col_count = c(ncol(yere_data$yere_data$transform$pathclient$joined_pathclient),
+                         ncol(yere_data$yere_data$transform$referral_flow$scd$payor_one |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$scd$housing_one |>
+                                  select(-client_number, -tiedenrollment)),
+                         # ncol(yere_data$yere_data$transform$referral_flow$scd$client_needs_one |>
+                         #          select(-client_number, -tiedenrollment)),
+                         # ncol(yere_data$yere_data$transform$referral_flow$scd$caregiver_needs_one |>
+                         #          select(-client_number, -tiedenrollment)),
+                         # ncol(yere_data$yere_data$transform$referral_flow$scd$client_family_needs_one |>
+                         #          select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$scd$needs_unified_one |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$ref |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$ia |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$hosp_visit |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$thirtyd |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$threem |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$sixm |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$bhs |>
+                                  select(-client_number, -tiedenrollment))
+                  )
+           )
+
+
+full_source <- full_source_init |>
+  rbind(
+    full_source_init |>
+      summarise(col_count = ncol(yere_full_data) - sum(col_count)) |>
+      mutate(df = 'added_after_joins') |>
+      relocate(df, col_count)
+  ) |>
+  mutate(start = cumsum(ifelse(is.na(lag(col_count)), 0, lag(col_count))),
+         end = start + col_count) |>
+  rename(columns = col_count)
+
+colnames(yere_full_data) |>
+  as_tibble() |>
+  rename(column_headers = value) |>
+  mutate(rank = row_number()) |>
+  filter(str_detect(column_headers, 'basic_status')) |>
+  full_join(full_source,
+            by = character()) |>
+  filter(rank > start & rank <= end) |> 
+  relocate(-df)
+
+```
+
+
+```{r}
+#| label: enhanced-data-set
+
+## this dataframe creates most necessary columns used to output results within the charts/tables below
+## ideally these columns should be added to the etl governed process in the future
+yere_full_data_enhanced <- yere_full_data |>
+  mutate(time_call_received_24_hour = strftime(strptime(ref_time_of_call_ref,'%I:%M%p'),format = "%H:%M"),
+    call_time_hr = as.numeric(str_sub(time_call_received_24_hour, 0, 2)),
+    inpatient_ed_categories = case_when(
+      ref_referred_from %in% c("Emergency Department") ~ "ED",
+      ref_referred_from %in% c("Physical Health Inpatient","Psychiatric Inpatient") ~ "Inpatient",
+      TRUE ~ "Other"
+    ),
+    matriculation_eligible = case_when(
+    (ref_program_participation_referral %in% c("Eligible For Youth ERE Services","Eligible for Youth ERE services") 
+     & (!dismissal_reason_description %in% c("Reconnect","Re-Referred","Transfer To Compass")) 
+     & (enrollment_starting_date != enrollment_ending_date)
+    ) ~ TRUE,
+    TRUE ~ FALSE),
+    matriculation_hospital_visit_opportunity = case_when(
+      (enrollment_starting_date == enrollment_ending_date) ~ FALSE,
+      (dismissal_reason_description %in% c("Reconnect","Re-Referred","Transfer To Compass")) ~ FALSE,
+      TRUE ~ TRUE),
+    matriculation_hospital_visit_opportunity_inpatient = case_when(
+      (matriculation_hospital_visit_opportunity == TRUE 
+       & inpatient_ed_categories == "Inpatient") ~  TRUE, 
+      TRUE ~ FALSE),
+    matriculation_hospital_visit_opportunity_ed = case_when(
+      (matriculation_hospital_visit_opportunity == TRUE 
+       & call_time_hr >= 8 & call_time_hr < 16 # working hours 8 am to 4 pm
+       & inpatient_ed_categories == "ED"
+         ) ~ TRUE,
+      TRUE ~ FALSE),
+    matriculation_hospital_visit_inpatient = case_when(
+      is.na(hosp_visit_yere_visit_hosp) ~ FALSE,
+      (hosp_visit_yere_visit_hosp == "Yes" 
+        & matriculation_hospital_visit_opportunity_inpatient == TRUE) ~ TRUE,
+      TRUE ~ FALSE),
+    matriculation_hospital_visit_ed = case_when(
+      is.na(hosp_visit_yere_visit_hosp) ~ FALSE,
+      (hosp_visit_yere_visit_hosp == "Yes" 
+        & matriculation_hospital_visit_opportunity_ed == TRUE) ~ TRUE,
+      TRUE ~ FALSE),
+    matriculation_engaged = case_when(
+    (matriculation_eligible == TRUE
+     & !is.na(ia_docserno) 
+     & ia_program_participation_ia == "Eligible For Youth ERE Services"
+    ) ~ TRUE,
+    TRUE ~ FALSE),
+    matriculation_admission = case_when(
+    (matriculation_eligible == TRUE
+     & matriculation_engaged == TRUE
+     #bhs_visitdt is the closest date to what version of the BHS form the case worker would be filling out
+     & ((bhs_admitted_to_services == "Yes" & bhs_visitdt < '2026-07-01') 
+        | (bhs_attend_bh_intake == "Yes" & bhs_visitdt >= '2026-07-01'))
+     # & bhs_admitted_to_services == "Yes" #FY26 goals based on this question (removed in FY27 BHS form)
+     # & bhs_attend_bh_intake == "Yes" #FY27 goals based on this question going forward
+    ) ~ TRUE,
+    TRUE ~ FALSE),
+    agency_description = case_when(agency_description == 'Compass Jefferson' ~ 'Compass Health', TRUE ~ agency_description),
+    month_year_referral_date = floor_date(enrollment_starting_date, "month"),
+    month_year_dismissed_date = floor_date(enrollment_ending_date, "month"),
+    fiscal_year_referral_two_digits = paste0("FY",str_sub(state_fy_year(enrollment_starting_date),3,4)),
+    fiscal_year_dismissed_two_digits = if_else(is.na(enrollment_ending_date), NA, 
+                                               paste0("FY",str_sub(state_fy_year(enrollment_ending_date),3,4))),
+    quarter_referral_two_digits = paste0("Q",state_fy_quarter(enrollment_starting_date)),
+    quarter_dismissed_two_digits = if_else(is.na(enrollment_ending_date), NA, 
+                                           paste0("Q",state_fy_quarter(enrollment_ending_date))),
+    current_fy_referral = state_fy_year(enrollment_starting_date) == state_fy_year(params$start_date),
+    current_fy_quarter = state_fy_quarter(enrollment_starting_date) == state_fy_quarter(params$start_date) &
+      state_fy_year(enrollment_starting_date) == state_fy_year(params$start_date)
+    )
+```
+
+
+```{r}
+#| label: data-subsets
+
 # Build subsets
 yere_subsets <- build_subsets(
-  full_data = yere_data$yere_data$yere_full_data,
+  full_data = yere_full_data_enhanced,
   start_date = params$start_date,
   end_date   = params$end_date,
   fiscal_system = params$fiscal_system
@@ -44,4 +215,1331 @@ yere_subsets <- build_subsets(
 
 yere_initiated  <- yere_subsets$initiated_within_period
 yere_dismissed  <- yere_subsets$dismissed_within_period
+
+yere_subsets_rolling_12 <- build_subsets(
+  full_data = yere_full_data_enhanced,
+  start_date = params$start_date %m-% months(9),
+  end_date   = params$end_date,
+  fiscal_system = params$fiscal_system
+)
+
+yere_initiated_rolling_12 <- yere_subsets_rolling_12$initiated_within_period
+# yere_dismissed_rolling_12 <- yere_subsets_rolling_12$dismissed_within_period
 ```
+
+
+```{r}
+#| label: quarter-text
+quarter_fy <- paste0(str_sub(state_fy_label(params$start_date), 4,9),
+                   " ",
+                   str_sub(state_fy_label(params$start_date), 1,2),
+                   " (",
+                   paste0(yere_initiated |> 
+                              mutate(month_referral_abbr = month(enrollment_starting_date, label = TRUE)) |>
+                              select(month_referral_abbr) |> 
+                              distinct() |> 
+                              pull(),
+                    collapse = " "),
+                   ")"
+                   )
+
+current_quarter <- str_sub(state_fy_label(params$start_date), 1,2)
+```
+
+<center> <h1> `r quarter_fy` </h1> </center>
+
+<br>
+
+![](images/BHN Logo Vector.png){fig-align="center" width=300}
+
+```{r}
+#| label: quarterly-referrals-total
+
+# referral_total_title <- paste0('Total Referrals In ', 
+#                                unique(yere_initiated$fiscal_year_referral_two_digits), ' ',
+#                                unique(yere_initiated$quarter_referral_two_digits))
+
+yere_rolling_12_ref_uniq_clients <- yere_initiated_rolling_12 |> 
+  group_by(month_year_referral_date) |> 
+  summarise(Referrals = n(),
+            .groups = "drop") |> 
+  select(Referrals) |> 
+  map(~.x) |> 
+  rbind(yere_initiated_rolling_12 |> 
+          group_by(month_year_referral_date) |> 
+          summarise(`Distinct Clients` = n_distinct(client_number),
+            .groups = "drop") |> 
+          select(`Distinct Clients`)|> 
+          map(~.x)
+  )
+
+total_referrals <- yere_initiated |> 
+  summarise(
+    Referrals = n(),
+    `Distinct Clients` = n_distinct(client_number),
+    .groups = "drop"
+    ) |> 
+  pivot_longer(cols = everything()) |> 
+  mutate(rolling_12_month = '') |> 
+  # rename(!!referral_total_title := any_of("referrals")) |> 
+  knitr::kable(
+    format = "html",
+    align = c("l", "c","c"),
+    col.names = c("", "Current Quarter", "Last 12 Months")
+  ) |>
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 12
+  ) |>
+  column_spec(3, image = spec_plot(yere_rolling_12_ref_uniq_clients,
+                                   same_lim = FALSE,
+                                   minmax = list(col = "orange", pch = 16, cex = 0.5))
+              ) |> 
+  kableExtra::row_spec(
+    0,
+    bold = TRUE,
+    color = "black",
+    background = "#88CCEE"
+  ) |>
+  kableExtra::column_spec(
+    1,
+    bold = TRUE,
+    color = "black"
+  ) 
+
+```
+
+
+```{r}
+#| label: referrals-over-time
+
+yere_referrals_current_qtr <- yere_initiated |>
+  group_by(month_year_referral_date) |>
+  summarise(referrals = n(),
+            .groups = "drop") |>
+  mutate(group_value = 1)
+
+ref_max_lim <- max(yere_referrals_current_qtr$referrals) * 1.25
+
+ref_min_lim <- min(yere_referrals_current_qtr$referrals) * 0.4
+
+yere_referrals_current_qtr_chart <- yere_referrals_current_qtr |>
+  ggplot(aes(x = month_year_referral_date, y = referrals,
+             group = group_value, label = referrals
+             )
+         ) +
+  geom_line(linewidth = 2, color = "#88CCEE") +
+  geom_point(size = 12, color = "#88CCEE") +
+  geom_text() +
+  guides(size = guide_legend(title = NULL))  +
+  scale_x_date(
+    breaks = unique(yere_referrals_current_qtr$month_year_referral_date),
+    date_labels = "%b '%y",
+    expand = 0.1 #adds extra space at the ends so the dots are not getting cut off
+    ) +
+  labs(
+    x = NULL, # "Case End Date"
+    y = NULL,
+    color = NULL
+  ) +
+  theme_bw(
+    base_size = 16
+    ) +
+  # guides(color = guide_legend(nrow = 2)) +
+  theme(
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    axis.line.x = element_line(color = "black", linewidth = 0.5),
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(
+      color = "black",
+      size = 10
+    ),
+    axis.title.x = element_blank(),
+    axis.ticks.y = element_blank()
+  ) +
+  ylim(ref_min_lim, ref_max_lim)
+
+```
+
+
+```{r}
+#| label: referrals-by-agency
+
+# Count referrals by referring hospital
+yere_referral_agency <- yere_initiated |> 
+  group_by(ref_yere_referring_hospital_description) |> 
+  summarise(referrals = n(),
+    .groups = "drop") |> 
+# Calculate percentages and create combined label
+  mutate(
+    # percentage of total referrals for each hospital
+    percentage = referrals / sum(referrals) * 100,
+    # create a label that shows both count and percent (e.g., "42 (18%)")
+    # if percentage is between 0 and 1, display "<1" instead of "0"
+    label = paste0(
+      referrals,
+      " (",
+      ifelse(
+        percentage < 1 & percentage > 0, 
+        "<1", round(
+          percentage
+          )
+        ),
+      "%)"
+    )
+  )
+
+# Build horizontal bar plot
+yere_referral_agency_plot <- yere_referral_agency |> 
+  ggplot(aes(# reorder hospitals by percentage
+    y = reorder(
+      ref_yere_referring_hospital_description, 
+      percentage
+      ),
+    # bar length represents percentage
+    x = percentage, 
+    fill = percentage
+    )
+  ) +
+  geom_col(
+    color = "white",
+    linewidth = 0.5,
+    show.legend = FALSE,
+    width = 0.95
+  ) +
+  scale_fill_gradient(low = "#b8dfe5", high = "#2e688c") +
+ # Add text labels showing "count (percent%)"
+  geom_text(
+    aes(
+      label = label
+      ),
+    # push labels slightly outside bars
+    hjust = -0.1, 
+    size = 3) +
+  labs(
+    title = NULL,
+    x = NULL,
+    y = NULL
+  ) +
+  scale_y_discrete(labels = function(x) str_wrap(x, width = 45)) +
+  theme_minimal() +
+  theme(
+    # remove gridlines for cleaner look
+    panel.grid = element_blank(),
+    # hide x-axis text
+    axis.text.x = element_blank(),
+    # hide x-axis ticks
+    axis.ticks.x = element_blank(),
+    # hide x-axis title
+    axis.title.x = element_blank(),
+    # hide y-axis ticks
+    axis.ticks.y = element_blank(),
+    # right-align hospital names
+    axis.text.y = element_text(
+      hjust = 1,
+      size = 8.5
+      ),
+    plot.margin = margin(0, 0, 0, 0, "pt")
+  ) +
+  xlim(
+    0, 
+    max(
+      yere_referral_agency$percentage
+      )
+    # extra space for labels
+    * 1.3
+    ) 
+
+```
+
+
+```{r}
+#| label: referral-reason
+
+yere_primary_reason <- yere_initiated |> 
+  mutate(
+# Apply suicide‑attempt logic: If the referral reason is "Risk Of Harm To Self"
+# and the youth had a suicide attempt, recode the reason as "Suicide Attempt".
+# Otherwise retain "Risk Of Harm To Self" for non‑attempt cases
+    ref_primary_reason_referral = case_when(
+      ref_primary_reason_referral == "Risk Of Harm To Self" &
+        ref_was_suicide_attempt == "Yes" ~ "Suicide Attempt",
+      ref_primary_reason_referral == "Risk Of Harm To Self" &
+        ref_was_suicide_attempt == "No"  ~ "Risk Of Harm To Self",
+      TRUE ~ ref_primary_reason_referral
+    ),
+# Recode the long "Risk Of Harm To Others" label to a shorter, standardized version
+    ref_primary_reason_referral = str_replace(
+      ref_primary_reason_referral,
+      "Risk Of Harm To Others \\(Homicidal Thoughts/Threats; Aggressive Behavior\\)",
+      "Risk Of Harm To Others"
+    )
+  ) |>
+# Count the number of referrals for each primary reason
+  count(
+    ref_primary_reason_referral, 
+    name = "referral_count"
+    ) |>
+# Calculate each reason’s percentage of total referrals
+  mutate(
+    percent = round(
+      (
+        referral_count / sum(
+          referral_count)
+        )
+      * 100
+      )
+  ) |>
+# Sort results in descending order of percentage for reporting
+  arrange(
+    desc(
+      percent
+      )
+    )
+
+
+# Build primary_reason_plot bar plot
+yere_primary_reason_plot <- yere_primary_reason |> 
+  ggplot(aes(
+      x = reorder(
+        ref_primary_reason_referral, 
+        percent),
+      y = percent,
+      fill = percent
+      )
+    ) +
+  geom_bar(
+    stat = "identity", 
+    show.legend = FALSE
+    ) + 
+  scale_fill_gradient(low = "#b8dfe5", high = "#2e688c") +
+  geom_text(
+    aes(
+      label = paste0(referral_count," (", percent, "%)")
+      ), 
+    hjust = -0.1, 
+    size = 3
+    ) +
+  labs(
+    title = NULL,
+    x = NULL,
+    y = NULL
+  ) +
+  coord_flip() +
+  theme_minimal(
+    base_size = 8
+    ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 25)) +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(
+      hjust = 1,
+      size = 8.5
+      ),
+    plot.margin = margin(0, 0, 0, 0, "pt")
+  ) +
+  ylim(
+    0, 
+    max(
+      yere_primary_reason$percent
+      )* 1.3
+    )
+
+```
+\newpage
+
+<!-- <center> -->
+
+<!-- <b> Youth Emergency Room Enhancement (YERE) </b> -->
+
+<!-- </center> -->
+::: {.column-margin}
+![](images/BHN Logo Vector.png){fig-align="center" width="100"}
+:::
+
+::::: {.columns}
+
+::::{.column width="50%"}
+<center><b> Youth Emergency Room Enhancement (YERE) </b></center>
+
+<center><b> Quarterly Brief </b></center>
+
+<center> `r quarter_fy ` </center>
+
+::: quarto-figure
+```{r}
+#| include: true
+#| fig-align: center
+#| fig-margin: false
+total_referrals
+```
+:::
+::::
+
+::::{.column width="50%"}
+
+<center> <b> Monthly Referrals </b> </center>
+::: quarto-figure
+```{r, fig.height = 1.5, fig.width = 3}
+#| include: true
+#| fig-align: center
+#| fig-margin: false
+yere_referrals_current_qtr_chart
+```
+:::
+::::
+
+:::::
+
+::::: {.columns}
+
+::::{.column width="50%"}
+<center> <b> Referrals By Referring Agency </b> </center>
+::: quarto-figure
+```{r, fig.height = 2.0, fig.width = 5}
+#| include: true
+#| fig-align: center
+#| fig-margin: false
+yere_referral_agency_plot
+```
+:::
+::::
+
+::::{.column width="50%"}
+<center> <b> Referrals By Primary Reason </b> </center>
+::: quarto-figure
+```{r, fig.height = 2.0, fig.width = 5}
+#| include: true
+#| fig-align: center
+#| fig-margin: false
+yere_primary_reason_plot
+```
+:::
+::::
+
+:::::
+
+
+```{r}
+#| label: yere-demographics-housing-status
+
+# Create yere_housing_status_ref variable.
+yere_housing_status_ref <- yere_initiated |> 
+# ensure field is character, not factor
+  mutate(ref_housing_status_referral = as.character(ref_housing_status_referral)) |> 
+  # replace NA with explicit label (RM: I moved this up above the count step)
+  mutate(
+    ref_housing_status_referral = if_else(
+      is.na(
+        ref_housing_status_referral
+    ),
+    "Unknown", #<Missing>",
+    ref_housing_status_referral
+    )
+    ) |> 
+# sort counts in descending order
+  count(
+    ref_housing_status_referral,
+    name = "Frequency",
+    sort = TRUE
+    ) |> 
+# Compute raw percentages and format as whole-number percent labels
+  mutate(
+    Percent_raw = Frequency / sum(Frequency),
+    Percent_pct = Percent_raw * 100,
+    PercentRounded = round(Percent_pct),# whole-number percent for most rows
+    Percent = case_when(
+      Frequency == 0 ~ "0%", # zero referrals
+      Percent_pct < 1  ~ "<1%",# under 1% show >1%
+      TRUE ~ paste0(PercentRounded, "%")
+      )
+  ) |> 
+  arrange(desc(Frequency)) |> 
+  select('Status' = ref_housing_status_referral, Frequency, Percent) #Percentage = Percent)
+
+yere_housing_status_ref_kable <- yere_housing_status_ref |> 
+  knitr::kable(
+    format = "html",
+    align = c("l", "c","c")
+  ) |> 
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |> 
+  kableExtra::row_spec(
+    0,
+    color = "black",
+    background = "#88CCEE"
+  ) |> 
+  kableExtra::column_spec(
+    1,
+    color = "black",
+    bold = TRUE
+  ) |>
+  column_spec(1, width = "3cm") 
+
+```
+
+
+```{r}
+#| label: yere-demographics-active-payor-source
+
+# Pivot all payor source indicator columns into a long format so each client has
+# one row per active payor source. Keep only rows where the payor source flag =
+# 1.
+yere_active_payor_source_long <- yere_initiated |> 
+ select(
+      client_number,
+      enrollment_starting_date,
+      payor_managed_medicaid_provider_description, 
+      payor_payor_source_dual_eligible,
+      payor_payor_source_managed_medicaid,
+      payor_payor_source_medicaid,
+      payor_payor_source_medicaid_in_progress,
+      payor_payor_source_medicaid_chp,
+      payor_payor_source_medicare,
+      payor_payor_source_private_insurance,
+      payor_payor_source_uninsured,
+      payor_payor_source_unknown_refused,
+      payor_payor_source_va_benefits
+ ) |> 
+  pivot_longer(
+    cols = c(
+      payor_payor_source_dual_eligible,
+      payor_payor_source_managed_medicaid,
+      payor_payor_source_medicaid,
+      payor_payor_source_medicaid_in_progress,
+      payor_payor_source_medicaid_chp,
+      payor_payor_source_medicare,
+      payor_payor_source_private_insurance,
+      payor_payor_source_uninsured,
+      payor_payor_source_unknown_refused,
+      payor_payor_source_va_benefits
+    ),
+    names_to = "active_payor_source",
+    values_to = "value"
+  ) |> 
+  filter(
+    value == 1
+  ) |> 
+  mutate(active_payor_source = str_to_title(str_replace_all(str_replace(active_payor_source,'payor_payor_source_', ''),'_',' ')))
+
+# For each client, keep only the most recent payor source based on enrollment
+# date. Then count how many clients fall into each payor source category and
+# compute whole-number percentages (with special handling for <1%). Add a total
+# row.
+yere_active_payor_source_table <- yere_active_payor_source_long |>
+  group_by(
+    client_number
+    ) |>
+  slice_max(
+    order_by = enrollment_starting_date, 
+    n = 1, with_ties = FALSE
+    )|>
+    ungroup(
+    ) |>
+  ## Wendy requested this change so that we can see a breakdown of providers for managed medicaid
+  ## however due to concerns with how payor source is collected and vetted this was taken out for now
+  # mutate(payor_managed_medicaid_provider_description = if_else(is.na(payor_managed_medicaid_provider_description), '',
+  #                                                              payor_managed_medicaid_provider_description),
+  #        active_payor_source = ifelse(payor_managed_medicaid_provider_description != '', 
+  #                                     paste0(active_payor_source, ' - ', payor_managed_medicaid_provider_description),
+  #                                     active_payor_source) 
+  #        ) |> 
+  ## The concern being remedied here is how accurate Managed Medicaid vs Medicaid categorization is made. 
+  ## When Managed Medicaid is entered in AnswerFirst with no Provider Information, Laura categorizes these as Medicaid, due to her historical experience
+  ## The concern here is the percentage of AnswerFirst cases with no Managed Medicaid provider is a lot higher than FAMCare's Unknown Managed Medicaid Provider data
+  ## on top of that YERE has no extra checks at an agency level on this information (payor source should be part of the IA form)
+  ## thus this case statement combines Managed Medicaid with Medicaid as we are more confident on the combined data rather than specifically being Managed Medicaid or Medicaid
+  mutate(active_payor_source = case_when(active_payor_source %in% c('Managed Medicaid','Medicaid') ~'Medicaid*'
+                                         , TRUE ~ active_payor_source) 
+  ) |> 
+  count(
+      active_payor_source, 
+      name = "payor_source_entries", 
+      sort = TRUE
+      ) |>
+  mutate(
+    Percent_raw = payor_source_entries / sum(payor_source_entries),
+    Percent_pct = Percent_raw * 100,
+    PercentRounded = round(Percent_pct),# whole-number percent for most rows
+    Percent = case_when(
+      payor_source_entries == 0 ~ "0%", # zero referrals
+      Percent_pct < 1  ~ "<1%",# under 1% show >1%
+      TRUE ~ paste0(PercentRounded, "%")
+    )
+  ) |>
+  select(
+    `Payor Source` = active_payor_source, 
+    `Count`= payor_source_entries, 
+    Percent
+    ) 
+
+ymax_payor_source <- yere_active_payor_source_table |> 
+  summarise(n_max = max(Count) * 1.45) |> 
+  pull()
+
+# Creates bar chart with payor_source data
+yere_active_payor_source_plot <- yere_active_payor_source_table |> 
+  ggplot(aes(x = reorder(`Payor Source`, Count), y = Count, fill = Count)) +
+  geom_col(
+    color = "white"
+    ,linewidth = 0.8
+    ,show.legend = FALSE
+  ) +
+  scale_fill_gradient(low = "#b8dfe5", high = "#2e688c") +
+  coord_flip() +
+  geom_text(
+    aes(label = paste0(Count, " (", Percent,")")),
+    hjust = -0.15,
+    size = 3,
+    color = "#333333"
+  ) +
+  labs(
+  title = NULL,
+  caption = "* 'Medicaid' combines Managed Medicaid and Medicaid\nstatuses.",
+  x = NULL,
+  y = "Distinct Client Count"
+  ) +
+  scale_y_continuous(
+    limits = c(0, ymax_payor_source),
+    expand = c(0, 0),
+    labels = NULL
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 20)) +
+  theme(
+    panel.background = element_rect(
+      fill = "white", 
+      color = NA
+      ),
+    plot.background  = element_rect(
+      fill = "white", 
+      color = NA
+      ),
+    plot.caption = element_text(hjust = 0, face = "italic", size = 8.5), 
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(
+      size = 8.5, 
+      color = "#333333"
+      ),
+    axis.title.x = element_text(size = 9)
+  )
+
+```
+
+<center> <p style="color: blue; font-size: 12px;"> All Demographic charts below represent clients referred during `r current_quarter`. </p> </center>
+
+:::::::: columns
+:::: {.column width="45%"}
+<center> <b> Housing </b> </center>
+
+<center><i class="fa-solid fa-house fa-lg "></i></center>
+
+::: {.quarto-figure .small}
+```{r}
+#| include: true
+yere_housing_status_ref_kable
+```
+:::
+::::
+
+::: {.column width="5%"}
+:::
+
+:::: {.column width="50%"}
+::: quarto-figure
+<center> <b> Insurance Status </b> </center>
+```{r, fig.width=4.2, fig.height=2.3}
+#| include: true
+yere_active_payor_source_plot
+```
+:::
+::::
+::::::::
+
+
+```{r}
+#| label: yere-demographics-race
+
+yere_race <- yere_initiated |> 
+  mutate(
+    yere_race_group = case_when(
+      race_description == "White" ~ "White",
+      race_description == "Black Or African American" ~ "Black Or African American",
+      TRUE ~ "Other"
+    )
+  ) |>
+  tabyl(
+    yere_race_group,
+    show_na = TRUE,
+    show_missing_levels = FALSE
+  ) |>
+  rename(
+    Race = yere_race_group,
+    Frequency = n,
+    Percentage = percent
+  ) |>
+  adorn_pct_formatting(digits = 0) |>
+  mutate(
+    Percentage = if_else(
+      Percentage == "0%", "<1%", Percentage
+    )
+  ) |>
+  arrange(desc(Frequency)) |>
+  mutate(
+    pct_num = Frequency / sum(Frequency) * 100
+  ) |>
+  arrange(desc(pct_num)) 
+
+
+yere_race_table <- yere_race |> 
+  select(Race, Percentage) |>
+   knitr::kable(
+    format = "html",
+    align = c("l", "c")
+    , col.names = NULL
+    # ,escape = FALSE
+    # caption = "Events by Type"
+  ) |>
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |>
+  # kableExtra::row_spec(
+  #   0,
+  #   color = "black",
+  #   background = "#88CCEE"
+  # ) |>
+  kableExtra::column_spec(
+    1,
+    color = "black",
+    bold = TRUE
+  )
+
+
+```
+
+
+```{r}
+#| label: yere-demographics-gender
+
+# creates gender table from yere_full_data_report_quarter.
+yere_gender <- yere_initiated |>
+  mutate(
+    gender_description_group = case_when(
+      gender_description == "Cisgender Man/Boy" ~ "Cisgender Boy",
+      gender_description == "Cisgender Woman/Girl" ~ "Cisgender Girl",
+      TRUE ~ "Other"
+    )
+  ) |>
+  tabyl(
+    gender_description_group,
+    show_na = TRUE,
+    show_missing_levels = FALSE
+  ) |>
+  rename(
+    Gender = gender_description_group,
+    Frequency = n,
+    Percentage = percent
+  ) |>
+  adorn_pct_formatting(digits = 0) |>
+  mutate(
+    Percentage = if_else(
+      Percentage == "0%", "<1%", Percentage
+    )
+  ) |>
+  arrange(desc(Frequency)) |>
+  mutate(
+    pct_num = Frequency / sum(Frequency) * 100
+  ) 
+
+
+yere_gender_table <- yere_gender |>
+  select(Gender, Percentage) |>
+   knitr::kable(
+    format = "html",
+    align = c("l", "c"),
+    col.names = NULL
+    # ,escape = FALSE
+    # caption = "Events by Type"
+  ) |>
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |>
+  # kableExtra::row_spec(
+  #   0,
+  #   color = "black",
+  #   background = "#88CCEE"
+  # ) |>
+  kableExtra::column_spec(
+    1,
+    color = "black",
+    bold = TRUE
+  )
+
+```
+
+```{r}
+#| label: yere-demographics-ethnicity
+
+# Create an ethnicity summary table
+yere_ethnicity <- yere_initiated |>
+  mutate(
+    ethnicity_description = case_when(
+      is.na(ethnicity_description) ~ "Not Collected",
+      TRUE ~ ethnicity_description
+    )
+  ) |> 
+  tabyl(
+    ethnicity_description,
+    show_na = TRUE,
+    show_missing_levels = FALSE
+  ) |>
+  rename(
+    Ethnicity = ethnicity_description,
+    Frequency = n,
+    Percentage = percent
+  ) |>
+  adorn_pct_formatting(digits = 0) |>
+  mutate(
+    Percentage = if_else(
+      Percentage == "0%", "<1%", Percentage
+    )
+  ) |>
+  arrange(desc(Frequency)) |>
+  mutate(
+    pct_num = Frequency / sum(Frequency) * 100
+  )
+
+yere_ethnicity_table <- yere_ethnicity |> 
+  select(Ethnicity, Percentage) |>
+  knitr::kable(
+    format = "html",
+    align = c("l", "c"),
+    col.names = NULL
+    # ,escape = FALSE
+    # caption = "Events by Type"
+  ) |>
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |>
+  # kableExtra::row_spec(
+  #   0,
+  #   color = "black",
+  #   background = "#88CCEE"
+  # ) |>
+  kableExtra::column_spec(
+    1,
+    color = "black",
+    bold = TRUE
+  )
+
+```
+
+::::::::::::: columns
+:::: {.column width="3%"}
+::::
+
+:::: {.column width="31%"}
+<center> <b> Race </b> </center>
+
+<center><i class="fa-solid fa-people-group fa-lg "></i></center>
+
+::: {.quarto-figure .small}
+```{r}
+#| include: true
+#| fig-align: center
+yere_race_table
+```
+:::
+::::
+
+:::: {.column width="2%"}
+::::
+
+:::: {.column width="27%"}
+<center> <b> Gender </b> </center>
+
+<center><i class="fa-solid fa-children fa-lg "></i></center>
+
+::: {.quarto-figure .small}
+```{r}
+#| include: true
+#| fig-align: center
+yere_gender_table
+```
+:::
+::::
+
+:::: {.column width="2%"}
+::::
+
+:::: {.column width="32%"}
+<center> <b> Ethnicity </b> </center>
+
+<center><i class="fa-solid fa-globe fa-lg "></i></center>
+
+::: {.quarto-figure .small}
+```{r}
+#| include: true
+#| fig-align: center
+yere_ethnicity_table
+```
+:::
+::::
+
+:::: {.column width="3%"}
+::::
+:::::::::::::
+
+
+```{r}
+#| label: matriculation-funnel
+
+yere_matriculation <- yere_dismissed |>
+  summarise(Referrals = n(),
+            Eligible = sum(case_when(matriculation_eligible == TRUE ~ 1, TRUE ~ 0)),
+            Engaged = sum(case_when(matriculation_engaged == TRUE ~ 1, TRUE ~ 0)),
+            Admitted = sum(case_when(matriculation_admission == TRUE ~ 1, TRUE ~ 0)),
+            .groups = "drop") |> 
+  mutate(eligible_percent = case_when(is.na(Eligible) & is.na(Referrals) ~ NA
+                                      ,is.na(Eligible) ~ 0 , TRUE ~ Eligible / Referrals),
+         engaged_percent = case_when(is.na(Engaged) & is.na(Eligible) ~ NA
+                                       ,is.na(Engaged) ~ 0 , TRUE ~ Engaged / Eligible),
+         engaged_symbol = case_when(engaged_percent >= 0.7 ~ "✅"  # "✔️"
+                              , engaged_percent < 0.7 ~ "✖️"
+                              , TRUE ~ ""),
+         admitted_percent = case_when(is.na(Admitted) & is.na(Engaged) ~ NA
+                                        ,is.na(Admitted) ~ 0 , TRUE ~ Admitted / Engaged),
+         admitted_symbol = case_when(admitted_percent >= 0.6 ~ "✅"  # "✔️"
+                              , admitted_percent < 0.6 ~ "✖️"
+                              , TRUE ~ "")
+         ) |> 
+  adorn_pct_formatting(
+    columns = c(eligible_percent, engaged_percent, admitted_percent)
+    ,digits = 0
+    ) |>
+  mutate(`% Eligible` = eligible_percent,
+         `% Engaged` = paste0(engaged_percent, " ", engaged_symbol),
+         `% Admitted` = paste0(admitted_percent, " ", admitted_symbol)
+         ) |>
+  select(Referrals, Eligible, `% Eligible`, Engaged, `% Engaged`, Admitted, `% Admitted`)
+
+
+yere_matriculation_funnel <- yere_matriculation |> 
+  select(Referrals, Eligible, Engaged, Admitted) |> 
+  pivot_longer(cols = everything(), names_to = "Matriculation", values_to = "Totals") |> 
+  cbind(
+    tibble(
+      width = c(1, 0.8, 0.6, 0.4),  # Controls horizontal width of each stage
+      y = c(4, 3, 2, 1)           # Vertical positions (top to bottom)
+    )
+  )
+
+# Plot vertical funnel
+yere_matriculation_funnel_plot <- yere_matriculation_funnel |> 
+  ggplot() +
+  geom_rect(aes(xmin = -width/2, xmax = width/2,
+                ymin = y - 0.45, ymax = y + 0.45,
+                fill = Matriculation),
+            show.legend = FALSE) +
+  geom_text(aes(x = 0, y = y, label = paste0(Matriculation, "\n", Totals)),
+            size = 3, color = "white") +
+  scale_fill_manual(values = c("Referrals" = "#000000",
+                               "Eligible" = "#252561",
+                               "Engaged" = "#4c68b5",
+                               "Admitted" = "#9ab9cd")) + 
+  theme_void()
+
+yere_matriculation_funnel_table <- yere_matriculation |> 
+  select(Eligible = `% Eligible`, Engaged = `% Engaged`, Admitted = `% Admitted`) |> 
+  pivot_longer(cols = everything(), names_to = "Referral", values_to = "Actual") |> 
+  mutate(Goal = case_when(Referral == "Engaged" ~ "70%", Referral == "Admitted" ~ "60%", TRUE ~ "")) |> 
+  select(Referral, Goal, Actual)
+
+yere_funnel_table_colnames <- c(cell_spec("Referrals", color = "white", background = "#000000"), 
+                 "Goal", "Actual")
+
+yere_matriculation_funnel_kable <- yere_matriculation_funnel_table |> 
+  knitr::kable(
+    format = "html",
+    align = c("c","c","c"),
+    col.names = yere_funnel_table_colnames,
+    escape = FALSE
+  ) |>
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |>
+  kableExtra::row_spec(
+    0:3,
+    color = "black",
+    background = "white"
+  ) |>
+  kableExtra::column_spec(
+    1,
+    color = "white",
+    background = c("#252561","#4c68b5","#9ab9cd")
+  )
+
+```
+
+\newpage
+
+::: {.column-margin}
+![](images/BHN Logo Vector.png){fig-align="center" width="100"}
+:::
+
+<center> <p style="color: blue; font-size: 12px;"> All charts below represent clients dismissed during `r current_quarter`. </p> </center>
+
+<center>
+
+<b> Referred ➡️ Eligible ➡️ Engagement ➡️ Admission </b>
+
+</center>
+
+::::::::::: columns
+:::: {.column width="68%"}
+::: quarto-figure
+```{r, fig.width=5, fig.height=1.5}
+#| include: true
+#| fig-align: center
+yere_matriculation_funnel_plot
+```
+:::
+::::
+
+:::::::: {.column width="32%"}
+::::::: columns
+::: {.column width="10%"}
+
+***
+
+<!-- <center><i class="fa-solid fa-circle fa-2xs " style="color: #FFFFFF;"></i></center> -->
+
+<i class="fa-solid fa-arrow-down fa-lg " style="color: #252561;"></i>
+
+<!-- <center><i class="fa-solid fa-circle fa-2xs " style="color: #FFFFFF;"></i></center> -->
+
+<i class="fa-solid fa-arrow-down fa-lg " style="color: #4c68b5;"></i>
+
+<!-- <center><i class="fa-solid fa-circle fa-2xs " style="color: #FFFFFF;"></i></center> -->
+
+<i class="fa-solid fa-arrow-down fa-lg " style="color: #9ab9cd;"></i>
+
+
+<!-- [{{< fa arrow-down size=xl >}}]{style="color: #252561; text-align: center;"} -->
+
+<!-- [{{< fa arrow-down size=xl >}}]{style="color: #4c68b5; text-align: center;"} -->
+
+<!-- [{{< fa arrow-down size=xl >}}]{style="color: #9ab9cd; text-align: center;"} -->
+:::
+::: {.column width="10%"}
+:::
+
+:::: {.column width="80%"}
+::: quarto-figure
+```{r}
+#| include: true
+yere_matriculation_funnel_kable
+```
+:::
+::::
+
+:::::::
+::::::::
+
+:::::::::::
+
+
+```{r}
+#| label: needs-youth-family-setup
+
+
+## potential cases where a need may need to be identified focused on those: eligible, able to be contacted post-referral, not a reconnect or transfer to compass, not a re-referral, and the ia form is completed.
+## administrative dismissals have been left in. program management believes this option is really for cases where the client is transferred to a new program (EPICC, BCR, etc.) and noting those needs are important in these scenarios.
+
+## Needs has been updated to the Needs unified data set (a transformation table that is populated based on all three needs forms: youth, caregiver, and youth/family). This logic allows easier analysis of needs across fiscal periods without lots of columns to analyze.
+
+yere_needs_unified <- yere_dismissed |>
+  filter(ref_program_participation_referral %in% c("Eligible For Youth ERE Services","Eligible for Youth ERE services")
+     & (!dismissal_reason_description %in% c("Reconnect","Re-Referred","Transfer To Compass","Unable To Locate/Make Contact Post-Referral"))
+     & (enrollment_starting_date != enrollment_ending_date)
+     & !is.na(ia_docserno)
+     ) |>
+  # filter(
+  #   !is.na(
+  #     youth_needs
+  #   )
+  # ) |>
+  select(
+    client_number,
+    enrollment_starting_date,
+    enrollment_ending_date,
+    dismissal_reason_description,
+    agency_description,
+    # program_participation_ia,
+    ref_docserno,
+    needs_unified_docserno,
+    needs_unified_source_youth, 
+    needs_unified_source_caregiver, 
+    needs_unified_source_client_family, 
+    needs_unified_youth_family_need_basic_status,
+    needs_unified_youth_family_need_crisis_status,
+    needs_unified_youth_family_need_dental_status,
+    needs_unified_youth_family_need_dds_status,
+    needs_unified_youth_family_need_edu_status,
+    needs_unified_youth_family_need_employ_status,
+    needs_unified_youth_family_need_family_mental_health_status,
+    needs_unified_youth_family_need_family_therapy_status,
+    needs_unified_youth_family_need_housing_status,
+    needs_unified_youth_family_need_legal_status,
+    needs_unified_youth_family_need_medication_status,
+    needs_unified_youth_family_need_parent_resource_status,
+    needs_unified_youth_family_need_phys_health_status,
+    needs_unified_youth_family_need_specialized_tx_status,
+    needs_unified_youth_family_need_su_service_status,
+    needs_unified_youth_family_need_support_groups_status,
+    needs_unified_youth_family_need_transportation_status #technically a careover from FY26
+  ) 
+
+yere_needs_unified_longer <- yere_needs_unified |> 
+  select(client_number) |> 
+  distinct() |> 
+  left_join(yere_needs_unified |>
+              pivot_longer(
+                cols = c(
+                      needs_unified_youth_family_need_basic_status,
+                      needs_unified_youth_family_need_crisis_status,
+                      needs_unified_youth_family_need_dental_status,
+                      needs_unified_youth_family_need_dds_status,
+                      needs_unified_youth_family_need_edu_status,
+                      needs_unified_youth_family_need_employ_status,
+                      needs_unified_youth_family_need_family_mental_health_status,
+                      needs_unified_youth_family_need_family_therapy_status,
+                      needs_unified_youth_family_need_housing_status,
+                      needs_unified_youth_family_need_legal_status,
+                      needs_unified_youth_family_need_medication_status,
+                      needs_unified_youth_family_need_parent_resource_status,
+                      needs_unified_youth_family_need_phys_health_status,
+                      needs_unified_youth_family_need_specialized_tx_status,
+                      needs_unified_youth_family_need_su_service_status,
+                      needs_unified_youth_family_need_support_groups_status,
+                      needs_unified_youth_family_need_transportation_status #technically a careover from FY26
+                  ),
+                names_to = "youth_family_needs_status",
+                values_to = "value"
+                ) |>
+              mutate(
+                value_num = case_when(
+                  value == "Referral/Assistance Provided; Connected" ~ 1,
+                  value == "Referral/Assistance Not Yet Provided" ~ 0,
+                  value == "Referral/Assistance Provided; Not Connected" ~ 0,
+                  TRUE ~ NA_real_   # catches blanks, missing, unexpected values
+                  )
+                ) |>
+              filter(!is.na(value_num)) |> 
+              group_by(client_number) |> 
+              summarise(value_num = sum(value_num)
+                        , .groups = "drop") 
+            , by = c('client_number')
+            ) |> 
+  mutate(needs = case_when(is.na(value_num) ~ "No Need Identified"
+                           , value_num == 0 ~ "Need Identified, Not Addressed"
+                           , value_num > 0 ~ "Need Identified, Addressed"
+                           , TRUE ~ NA)
+  ) |> 
+  left_join(yere_needs_unified |> 
+              arrange(client_number, desc(enrollment_starting_date)) |> 
+              group_by(client_number) |> 
+              mutate(rank = dense_rank(desc(enrollment_starting_date))) |> 
+              ungroup() |> 
+              filter(rank == 1) |> 
+              select(client_number, agency_description
+                     , min_enrollment_starting_date = enrollment_starting_date) |> 
+              distinct()
+            , by = c('client_number')
+            )
+
+```
+
+
+```{r}
+#| label: needs-fy-totals
+
+yere_needs <- yere_needs_unified_longer |> 
+  mutate(needs_goal = case_when(needs %in% c("Need Identified, Addressed", "Need Identified, Not Addressed") ~ "Identified"
+                                , needs == "No Need Identified" ~ "Not Identified"
+                                , TRUE ~ NA)
+         ) |> 
+  summarise(identified = sum(if_else(needs_goal == "Identified", 1, 0)),
+            client_totals = n(),
+            addressed = sum(if_else(needs == "Need Identified, Addressed", 1, 0)),
+            .groups = "drop") |> 
+  mutate(percentage = addressed / identified,
+         symbol = case_when(percentage >= 0.6 ~ "✅"
+                              , percentage < 0.6 ~ "✖️"
+                              , TRUE ~ NA)
+         ) |> 
+  relocate(client_totals) |> 
+  rename(`IA Client Totals` = client_totals,
+         `1 ≥ Client Need Identified` = identified,
+         `1 ≥ Client Need Met` = addressed,
+         Percentage = percentage
+         ) |> 
+  adorn_pct_formatting(
+    columns = c(Percentage),
+    digits = 0
+    ) |> 
+  mutate(Percentage = paste0(Percentage, " ", symbol)) |> 
+  select(-symbol)
+
+yere_needs_kable <- yere_needs |> 
+  knitr::kable(
+    format = "html",
+    align = c("c","c","c","c"),
+    col.names = c(paste0("Engaged",footnote_marker_symbol(1))
+                  , "1 ≥ Need Identified"
+                  , "1 ≥ Need Met"
+                  , "Percent"
+                  ),
+    escape = FALSE
+    # ,caption = ""
+  ) |>
+  # footnote(symbol = "There is also a filter on dismissals where 'Unable To Locate/Make Contact Post-Referral'.") |>
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |>
+  kableExtra::row_spec(
+    0,
+    color = "black",
+    background = "#88CCEE"
+  )
+
+```
+
+
+```{r}
+#| label: hospital-visit-breakdown
+
+yere_hosp_visit_ed <- yere_dismissed |> 
+  mutate(hosp_visit_type = 'ED Response During Business Hours‡') |> 
+  group_by(hosp_visit_type) |> 
+  summarise(hospital_visit_opportunity = sum(ifelse(matriculation_hospital_visit_opportunity_ed == TRUE
+                                                 , 1, 0), na.rm = TRUE),
+            hospital_visit_yes = sum(ifelse(matriculation_hospital_visit_ed == TRUE
+                                                 , 1, 0), na.rm = TRUE),
+            .groups = "drop") 
+
+yere_hosp_visit_inpatient <- yere_dismissed |> 
+  mutate(hosp_visit_type = 'Inpatient Response') |> 
+  group_by(hosp_visit_type) |> 
+  summarise(hospital_visit_opportunity = sum(ifelse(matriculation_hospital_visit_opportunity_inpatient == TRUE
+                                                      , 1, 0), na.rm = TRUE),
+            hospital_visit_yes = sum(ifelse(matriculation_hospital_visit_inpatient == TRUE
+                                                      , 1, 0), na.rm = TRUE),
+            .groups = "drop") 
+
+yere_hosp_visit <- yere_hosp_visit_ed |> 
+  rbind(yere_hosp_visit_inpatient) |> 
+  mutate(percentage = case_when(is.na(hospital_visit_yes) & is.na(hospital_visit_opportunity) ~ NA
+                                ,is.na(hospital_visit_yes) ~ 0 
+                                , TRUE ~ hospital_visit_yes / hospital_visit_opportunity),
+         symbol = case_when(hosp_visit_type == 'ED Response During Business Hours‡' & percentage >= 0.5 ~ "✅" ,
+                            hosp_visit_type == 'ED Response During Business Hours‡' & percentage < 0.5 ~ "✖️" ,
+                            hosp_visit_type == 'Inpatient Response' & percentage >= 0.7 ~ "✅" ,
+                            hosp_visit_type == 'Inpatient Response' & percentage < 0.7 ~ "✖️" ,
+                            TRUE ~ NA)
+         ) |> 
+  adorn_pct_formatting(
+    columns = c(percentage),
+    digits = 0
+    ) |> 
+  mutate(percentage = paste0(percentage, " ", symbol)) |> 
+  select(-symbol)
+
+yere_hosp_visit_kable <- yere_hosp_visit |> 
+  knitr::kable(
+    format = "html",
+    align = c("l","c","c","c"),
+    col.names = c(paste0("Referral Source",footnote_marker_symbol(1)),
+                  paste0("Opportunities",footnote_marker_symbol(2)),
+                  "Visits",
+                  "Percent"
+                  ),
+    escape = FALSE
+    # ,caption = ""
+  ) |> 
+  kableExtra::kable_styling(
+    full_width = FALSE,
+    bootstrap_options = c("striped", "hover"),
+    font_size = 11
+  ) |> 
+  # footnote(symbol = c("Not all referrals are included in the sources noted"
+  #   ,"A Hospital Visit Opportunity is a referral that: 1. does NOT have an open an active episode of care (is a re-referral) 2. is NOT a Reconnect or Transfer To Compass"
+  #   , "Business Hours are 8am to 4pm")
+  # ) |> 
+  kableExtra::row_spec(
+    0,
+    color = "black",
+    background = "#88CCEE"
+  ) |> 
+  kableExtra::column_spec(
+    1,
+    color = "black",
+    bold = TRUE
+  ) 
+
+```
+
+
+::::: {.columns}
+
+::::{.column width="41%"}
+<center> <b> Youth Family Needs^1^ (Goal: 60%) </b> </center>
+
+<!-- [^yfn]: *There is also a filter on dismissals where 'Unable To Locate/Make Contact Post-Referral'. -->
+
+::: quarto-figure
+```{r}
+#| include: true
+yere_needs_kable
+```
+:::
+::::
+
+::::{.column width="58%"}
+<center> <b> In-Person Hospital Visit Response^2^ (Goals: <sup>50%</sup>&frasl;<sub>70%</sub>) </b> </center>
+
+<!-- [^hvn]: *Not all referrals are included in the sources noted. †A Hospital Visit Opportunity is a referral that: 1. does NOT have an open an active episode of care (is a re-referral) 2. is NOT a Reconnect or Transfer To Compass. ‡Business Hours are 8am to 4pm. -->
+
+::: quarto-figure
+```{r,}
+#| include: true
+yere_hosp_visit_kable
+```
+:::
+::::
+
+:::::
+
+::: {style="font-size: 11px;"}
+1. *There is also a filter on dismissals where 'Unable To Locate/Make Contact Post-Referral'.
+
+2. *Not all referrals are included in the sources noted. †A Hospital Visit Opportunity is a referral that: 1. does NOT have an open an active episode of care (is a re-referral) 2. is NOT a Reconnect or Transfer To Compass. ‡Business Hours are 8am to 4pm.
+:::
