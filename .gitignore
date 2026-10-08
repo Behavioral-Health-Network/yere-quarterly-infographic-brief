@@ -139,3 +139,6 @@ _freeze/
 # 11. Posit AI files
 # ============================================================
 .positai
+
+/.quarto/
+**/*.quarto_ipynb
