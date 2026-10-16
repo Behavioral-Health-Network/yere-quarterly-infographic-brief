@@ -157,6 +157,7 @@ yere_full_data_enhanced <- yere_full_data |>
     matriculation_hospital_visit_opportunity_ed = case_when(
       (matriculation_hospital_visit_opportunity == TRUE 
        & call_time_hr >= 8 & call_time_hr < 16 # working hours 8 am to 4 pm
+       & wday(enrollment_starting_date, label = TRUE) %in% c('Mon','Tue','Wed','Thu','Fri')
        & inpatient_ed_categories == "ED"
          ) ~ TRUE,
       TRUE ~ FALSE),
@@ -1560,5 +1561,5 @@ yere_hosp_visit_kable
 ::: {style="font-size: 11px;"}
 1. *There is also a filter on dismissals where 'Unable To Locate/Make Contact Post-Referral'.
 
-2. *Not all referrals are included in the sources noted. †A Hospital Visit Opportunity is a referral that: 1. does NOT have an open an active episode of care (is a re-referral) 2. is NOT a Reconnect or Transfer To Compass. ‡Business Hours are 8am to 4pm.
+2. *Not all referrals are included in the sources noted. †A Hospital Visit Opportunity is a referral that: 1. does NOT have an open an active episode of care (is a re-referral) 2. is NOT a Reconnect or Transfer To Compass. ‡Business Hours are 8am to 4pm, Monday through Friday.
 :::
