@@ -58,8 +58,8 @@ yere_full_data <- yere_data$yere_data$yere_full_data
 # The output includes the column # as well as the main data frame the column came from.
 
 full_source_init <- data.frame(df = c('yere_data$yere_data$transform$pathclient$joined_pathclient',
-                  'yere_data$yere_data$transform$referral_flow$scd$payor_one',
-                  'yere_data$yere_data$transform$referral_flow$scd$housing_one',
+                  # 'yere_data$yere_data$transform$referral_flow$scd$payor_one',
+                  # 'yere_data$yere_data$transform$referral_flow$scd$housing_one',
                   # 'yere_data$yere_data$transform$referral_flow$scd$client_needs_one',
                   # 'yere_data$yere_data$transform$referral_flow$scd$caregiver_needs_one',
                   # 'yere_data$yere_data$transform$referral_flow$scd$client_family_needs_one',
@@ -70,13 +70,15 @@ full_source_init <- data.frame(df = c('yere_data$yere_data$transform$pathclient$
                   'yere_data$yere_data$transform$referral_flow$transform$thirtyd',
                   'yere_data$yere_data$transform$referral_flow$transform$threem',
                   'yere_data$yere_data$transform$referral_flow$transform$sixm',
-                  'yere_data$yere_data$transform$referral_flow$transform$bhs'
+                  'yere_data$yere_data$transform$referral_flow$transform$bhs',
+                  'yere_data$yere_data$transform$referral_flow$transform$payor',
+                  'yere_data$yere_data$transform$referral_flow$transform$housing'
                   ),
            col_count = c(ncol(yere_data$yere_data$transform$pathclient$joined_pathclient),
-                         ncol(yere_data$yere_data$transform$referral_flow$scd$payor_one |>
-                                  select(-client_number, -tiedenrollment)),
-                         ncol(yere_data$yere_data$transform$referral_flow$scd$housing_one |>
-                                  select(-client_number, -tiedenrollment)),
+                         # ncol(yere_data$yere_data$transform$referral_flow$scd$payor_one |>
+                         #          select(-client_number, -tiedenrollment)),
+                         # ncol(yere_data$yere_data$transform$referral_flow$scd$housing_one |>
+                         #          select(-client_number, -tiedenrollment)),
                          # ncol(yere_data$yere_data$transform$referral_flow$scd$client_needs_one |>
                          #          select(-client_number, -tiedenrollment)),
                          # ncol(yere_data$yere_data$transform$referral_flow$scd$caregiver_needs_one |>
@@ -98,6 +100,10 @@ full_source_init <- data.frame(df = c('yere_data$yere_data$transform$pathclient$
                          ncol(yere_data$yere_data$transform$referral_flow$transform$sixm |>
                                   select(-client_number, -tiedenrollment)),
                          ncol(yere_data$yere_data$transform$referral_flow$transform$bhs |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$payor |>
+                                  select(-client_number, -tiedenrollment)),
+                         ncol(yere_data$yere_data$transform$referral_flow$transform$housing |>
                                   select(-client_number, -tiedenrollment))
                   )
            )
@@ -689,81 +695,17 @@ yere_housing_status_ref_kable <- yere_housing_status_ref |>
 
 
 ```{r}
-#| label: yere-demographics-active-payor-source
+#| label: yere-demographics-payor-source
 
-# Pivot all payor source indicator columns into a long format so each client has
-# one row per active payor source. Keep only rows where the payor source flag =
-# 1.
-yere_active_payor_source_long <- yere_initiated |> 
- select(
-      client_number,
-      enrollment_starting_date,
-      payor_managed_medicaid_provider_description, 
-      payor_payor_source_dual_eligible,
-      payor_payor_source_managed_medicaid,
-      payor_payor_source_medicaid,
-      payor_payor_source_medicaid_in_progress,
-      payor_payor_source_medicaid_chp,
-      payor_payor_source_medicare,
-      payor_payor_source_private_insurance,
-      payor_payor_source_uninsured,
-      payor_payor_source_unknown_refused,
-      payor_payor_source_va_benefits
- ) |> 
-  pivot_longer(
-    cols = c(
-      payor_payor_source_dual_eligible,
-      payor_payor_source_managed_medicaid,
-      payor_payor_source_medicaid,
-      payor_payor_source_medicaid_in_progress,
-      payor_payor_source_medicaid_chp,
-      payor_payor_source_medicare,
-      payor_payor_source_private_insurance,
-      payor_payor_source_uninsured,
-      payor_payor_source_unknown_refused,
-      payor_payor_source_va_benefits
-    ),
-    names_to = "active_payor_source",
-    values_to = "value"
-  ) |> 
-  filter(
-    value == 1
-  ) |> 
-  mutate(active_payor_source = str_to_title(str_replace_all(str_replace(active_payor_source,'payor_payor_source_', ''),'_',' ')))
-
-# For each client, keep only the most recent payor source based on enrollment
-# date. Then count how many clients fall into each payor source category and
-# compute whole-number percentages (with special handling for <1%). Add a total
-# row.
-yere_active_payor_source_table <- yere_active_payor_source_long |>
-  group_by(
-    client_number
-    ) |>
-  slice_max(
-    order_by = enrollment_starting_date, 
-    n = 1, with_ties = FALSE
-    )|>
-    ungroup(
-    ) |>
-  ## Wendy requested this change so that we can see a breakdown of providers for managed medicaid
-  ## however due to concerns with how payor source is collected and vetted this was taken out for now
-  # mutate(payor_managed_medicaid_provider_description = if_else(is.na(payor_managed_medicaid_provider_description), '',
-  #                                                              payor_managed_medicaid_provider_description),
-  #        active_payor_source = ifelse(payor_managed_medicaid_provider_description != '', 
-  #                                     paste0(active_payor_source, ' - ', payor_managed_medicaid_provider_description),
-  #                                     active_payor_source) 
-  #        ) |> 
-  ## The concern being remedied here is how accurate Managed Medicaid vs Medicaid categorization is made. 
-  ## When Managed Medicaid is entered in AnswerFirst with no Provider Information, Laura categorizes these as Medicaid, due to her historical experience
-  ## The concern here is the percentage of AnswerFirst cases with no Managed Medicaid provider is a lot higher than FAMCare's Unknown Managed Medicaid Provider data
-  ## on top of that YERE has no extra checks at an agency level on this information (payor source should be part of the IA form)
-  ## thus this case statement combines Managed Medicaid with Medicaid as we are more confident on the combined data rather than specifically being Managed Medicaid or Medicaid
-  mutate(active_payor_source = case_when(active_payor_source %in% c('Managed Medicaid','Medicaid') ~'Medicaid*'
-                                         , TRUE ~ active_payor_source) 
-  ) |> 
+# The Initial / Latest Payor source file is based on enrollment.
+# This chart used to be a count by unique client. But since changing
+# to the new payor data source, a count by enrollment is more applicable.
+yere_payor_source_table <- yere_initiated |> 
+  mutate(payor_latest_payor_source_description = if_else(is.na(payor_latest_payor_source_description), 'Unknown',
+                                                             payor_latest_payor_source_description)) |>
   count(
-      active_payor_source, 
-      name = "payor_source_entries", 
+      payor_latest_payor_source_description,
+      name = "payor_source_entries",
       sort = TRUE
       ) |>
   mutate(
@@ -777,17 +719,17 @@ yere_active_payor_source_table <- yere_active_payor_source_long |>
     )
   ) |>
   select(
-    `Payor Source` = active_payor_source, 
+    `Payor Source` = payor_latest_payor_source_description, 
     `Count`= payor_source_entries, 
     Percent
     ) 
 
-ymax_payor_source <- yere_active_payor_source_table |> 
+ymax_payor_source <- yere_payor_source_table |> 
   summarise(n_max = max(Count) * 1.45) |> 
   pull()
 
 # Creates bar chart with payor_source data
-yere_active_payor_source_plot <- yere_active_payor_source_table |> 
+yere_payor_source_plot <- yere_payor_source_table |> 
   ggplot(aes(x = reorder(`Payor Source`, Count), y = Count, fill = Count)) +
   geom_col(
     color = "white"
@@ -804,9 +746,9 @@ yere_active_payor_source_plot <- yere_active_payor_source_table |>
   ) +
   labs(
   title = NULL,
-  caption = "* 'Medicaid' combines Managed Medicaid and Medicaid\nstatuses.",
+  # caption = "* 'Medicaid' combines Managed Medicaid and Medicaid\nstatuses.",
   x = NULL,
-  y = "Distinct Client Count"
+  y = NULL #"Distinct Client Count"
   ) +
   scale_y_continuous(
     limits = c(0, ymax_payor_source),
@@ -859,7 +801,7 @@ yere_housing_status_ref_kable
 <center> <b> Insurance Status </b> </center>
 ```{r, fig.width=4.2, fig.height=2.3}
 #| include: true
-yere_active_payor_source_plot
+yere_payor_source_plot
 ```
 :::
 ::::
